@@ -1,0 +1,11 @@
+{
+  "name": "gantt",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "weweb build --name=gantt --type=wwobject",
+    "serve": "weweb serve --name=gantt --type=wwobject"
+  },
+  "devDependencies": {
+    "@weweb/cli": "latest"
+  }
+}
