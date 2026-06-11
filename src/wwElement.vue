@@ -1,34 +1,12 @@
 <template>
   <div class="gantt-wrapper">
-    <!-- TOP BAR: team totals + search -->
-    <div class="gantt-top-bar">
-      <div class="team-totals">
-        <span
-          v-for="t in teamTotalsList"
-          :key="t.name"
-          class="team-badge"
-          :class="'badge-' + t.code"
-        >
-          {{ t.name }} <strong>{{ t.days }}</strong>
-        </span>
-      </div>
-      <div class="search-wrap">
-        <input
-          v-model="searchQuery"
-          class="search-input"
-          placeholder="Rechercher"
-          type="text"
-        />
-        <svg class="search-icon" width="14" height="14" viewBox="0 0 20 20" fill="none">
-          <circle cx="8.5" cy="8.5" r="5.5" stroke="#9CA3AF" stroke-width="1.8"/>
-          <path d="M13 13l3.5 3.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-      </div>
-    </div>
+    <!-- Loading / error banners -->
+    <div v-if="loading" class="gantt-banner">Chargement…</div>
+    <div v-else-if="error" class="gantt-banner gantt-banner--error">{{ error }}</div>
 
     <!-- GANTT SCROLL AREA -->
     <div class="gantt-scroll" ref="scrollEl">
-      <div class="gantt-inner" :style="{ minWidth: innerWidth + 'px' }">
+      <div class="gantt-inner" :style="{ width: innerWidth + 'px' }">
 
         <!-- STICKY HEADER BLOCK -->
         <div class="gantt-header-block">
@@ -64,7 +42,7 @@
         </div>
 
         <!-- PROJECT ROWS -->
-        <template v-for="project in filteredProjects" :key="project.id">
+        <template v-for="project in displayProjects" :key="project.id">
           <!-- Main row -->
           <div
             class="gantt-row project-row"
@@ -100,7 +78,7 @@
           <template v-if="isExpanded(project.id) && project.teamAllocations && project.teamAllocations.length">
             <div
               v-for="alloc in project.teamAllocations"
-              :key="'a-' + alloc.id"
+              :key="'a-' + (alloc.id || alloc.team.code)"
               class="gantt-row sub-row"
             >
               <div class="left-cell sticky-cell sub-cell">
@@ -125,8 +103,8 @@
         </template>
 
         <!-- Empty state -->
-        <div v-if="filteredProjects.length === 0" class="empty-state">
-          Aucun projet trouvé
+        <div v-if="displayProjects.length === 0 && !loading" class="empty-state">
+          Aucun projet à afficher
         </div>
 
       </div>
@@ -135,16 +113,15 @@
 </template>
 
 <script>
+const LEFT_WIDTH = 200;
 const FR_MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 
 function quarterOf(month) {
   return Math.ceil(month / 3);
 }
-
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
-
 function addMonths(year, month, delta) {
   const d = new Date(year, month - 1 + delta, 1);
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
@@ -157,7 +134,6 @@ const STATUS_LABELS = {
   en_cours: 'En cours',
   cloture: 'Clôturé',
 };
-
 const STATUS_CLASS = {
   a_planifier: 'bar--orange',
   en_attente_go_client: 'bar--orange',
@@ -173,59 +149,51 @@ export default {
 
   data() {
     return {
-      searchQuery: '',
       expandedIds: [],
       offsetMonths: 0,
+      containerWidth: 1000,
+      fetchedData: null,
+      loading: false,
+      error: null,
     };
   },
 
   computed: {
+    // Data from API takes priority; otherwise the bound `data` property.
     projects() {
+      if (Array.isArray(this.fetchedData)) return this.fetchedData;
       const d = this.content && this.content.data;
       return Array.isArray(d) ? d : [];
     },
 
+    displayProjects() {
+      return this.projects;
+    },
+
+    minMonthWidth() {
+      return (this.content && this.content.minMonthWidth) || 90;
+    },
+
+    // Stretch months to fill the container; fall back to scrolling when too narrow.
     monthWidth() {
-      return (this.content && this.content.monthWidth) || 90;
-    },
-
-    filteredProjects() {
-      const q = this.searchQuery.trim().toLowerCase();
-      if (!q) return this.projects;
-      return this.projects.filter(p => p.name && p.name.toLowerCase().includes(q));
-    },
-
-    teamTotalsList() {
-      const map = {};
-      this.projects.forEach(p => {
-        (p.teamAllocations || []).forEach(a => {
-          const key = a.team.name;
-          if (!map[key]) map[key] = { name: a.team.name, code: (a.team.code || '').toLowerCase(), days: 0 };
-          map[key].days += a.totalDays || 0;
-        });
-      });
-      return Object.values(map);
+      const count = this.months.length || 1;
+      const avail = this.containerWidth - LEFT_WIDTH;
+      if (avail <= 0) return this.minMonthWidth;
+      return Math.max(this.minMonthWidth, avail / count);
     },
 
     timelineRange() {
       let sy, sm, ey, em;
+      const dates = this.projects.flatMap(p => [
+        new Date(p.expectedStartDate),
+        new Date(p.expectedEndDate),
+      ]).filter(d => !isNaN(d.getTime()));
 
-      if (this.projects.length > 0) {
-        const dates = this.projects.flatMap(p => [
-          new Date(p.expectedStartDate),
-          new Date(p.expectedEndDate),
-        ]).filter(d => !isNaN(d.getTime()));
-
-        if (dates.length) {
-          const minD = new Date(Math.min(...dates.map(d => d.getTime())));
-          const maxD = new Date(Math.max(...dates.map(d => d.getTime())));
-          sy = minD.getFullYear(); sm = minD.getMonth() + 1;
-          ey = maxD.getFullYear(); em = maxD.getMonth() + 1;
-        } else {
-          const now = new Date();
-          sy = ey = now.getFullYear();
-          sm = now.getMonth() + 1; em = sm + 3;
-        }
+      if (dates.length) {
+        const minD = new Date(Math.min(...dates.map(d => d.getTime())));
+        const maxD = new Date(Math.max(...dates.map(d => d.getTime())));
+        sy = minD.getFullYear(); sm = minD.getMonth() + 1;
+        ey = maxD.getFullYear(); em = maxD.getMonth() + 1;
       } else {
         const now = new Date();
         sy = ey = now.getFullYear();
@@ -233,7 +201,7 @@ export default {
       }
 
       const start = addMonths(sy, sm, -1 + this.offsetMonths);
-      const end   = addMonths(ey, em,  1 + this.offsetMonths);
+      const end = addMonths(ey, em, 1 + this.offsetMonths);
       return { startYear: start.year, startMonth: start.month, endYear: end.year, endMonth: end.month };
     },
 
@@ -243,7 +211,6 @@ export default {
       const cy = now.getFullYear(), cm = now.getMonth() + 1;
       const result = [];
       let y = startYear, m = startMonth;
-
       while (y < endYear || (y === endYear && m <= endMonth)) {
         result.push({
           year: y, month: m,
@@ -278,19 +245,16 @@ export default {
       const m = this.months[0];
       return new Date(m.year, m.month - 1, 1);
     },
-
     timelineEnd() {
       if (!this.months.length) return new Date();
       const m = this.months[this.months.length - 1];
       return new Date(m.year, m.month, 0, 23, 59, 59);
     },
-
     timelineWidth() {
       return this.months.length * this.monthWidth;
     },
-
     innerWidth() {
-      return 200 + this.timelineWidth;
+      return LEFT_WIDTH + this.timelineWidth;
     },
 
     tlCellStyle() {
@@ -310,11 +274,57 @@ export default {
     },
   },
 
+  watch: {
+    'content.apiUrl'() { this.fetchData(); },
+    'content.dataPath'() { this.fetchData(); },
+  },
+
+  mounted() {
+    this.measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(() => this.measure());
+      this.ro.observe(this.$refs.scrollEl);
+    }
+    if (typeof window !== 'undefined') window.addEventListener('resize', this.measure);
+    this.fetchData();
+  },
+
+  beforeUnmount() {
+    if (this.ro) this.ro.disconnect();
+    if (typeof window !== 'undefined') window.removeEventListener('resize', this.measure);
+  },
+
   methods: {
+    measure() {
+      const el = this.$refs.scrollEl;
+      if (el && el.clientWidth) this.containerWidth = el.clientWidth;
+    },
+
+    async fetchData() {
+      const url = this.content && this.content.apiUrl;
+      if (!url) { this.fetchedData = null; this.error = null; return; }
+      this.loading = true;
+      this.error = null;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let payload = await res.json();
+        const path = (this.content && this.content.dataPath || '').trim();
+        if (path) {
+          path.split('.').forEach(k => { payload = payload != null ? payload[k] : null; });
+        }
+        this.fetchedData = Array.isArray(payload) ? payload : [];
+      } catch (e) {
+        this.error = 'Erreur de chargement : ' + e.message;
+        this.fetchedData = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+
     isExpanded(id) {
       return this.expandedIds.indexOf(id) >= 0;
     },
-
     toggleExpand(id) {
       const idx = this.expandedIds.indexOf(id);
       if (idx >= 0) this.expandedIds.splice(idx, 1);
@@ -324,11 +334,9 @@ export default {
     sumDays(project) {
       return (project.teamAllocations || []).reduce((s, a) => s + (a.totalDays || 0), 0);
     },
-
     labelFor(status) {
       return STATUS_LABELS[status] || status;
     },
-
     statusToClass(status) {
       return STATUS_CLASS[status] || 'bar--gray';
     },
@@ -340,9 +348,7 @@ export default {
         const moStart = new Date(mo.year, mo.month - 1, 1);
         const moNextStart = new Date(mo.year, mo.month, 1);
         const days = daysInMonth(mo.year, mo.month);
-
         if (date < moStart) break;
-
         if (date >= moNextStart) {
           px += this.monthWidth;
         } else {
@@ -364,12 +370,11 @@ export default {
       const s = new Date(project.expectedStartDate);
       const e = new Date(project.expectedEndDate);
       const cs = s < this.timelineStart ? new Date(this.timelineStart) : s;
-      const ce = e > this.timelineEnd   ? new Date(this.timelineEnd)   : e;
-
-      const left  = this.dateToPx(cs);
+      const ce = e > this.timelineEnd ? new Date(this.timelineEnd) : e;
+      const left = this.dateToPx(cs);
       const right = this.dateToPx(ce);
       return {
-        left:  left + 'px',
+        left: left + 'px',
         width: Math.max(right - left, this.monthWidth * 0.25) + 'px',
       };
     },
@@ -384,7 +389,6 @@ $hdr-h:     30px;
 $border:    #E5E7EB;
 $sticky-bg: #fff;
 
-/* ─── Wrapper ─────────────────────────────────── */
 .gantt-wrapper {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
@@ -399,75 +403,28 @@ $sticky-bg: #fff;
   box-sizing: border-box;
 }
 
-/* ─── Top bar ─────────────────────────────────── */
-.gantt-top-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
+/* ─── Banners ─────────────────────────────────── */
+.gantt-banner {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #6B7280;
+  background: #F9FAFB;
   border-bottom: 1px solid $border;
-  flex-shrink: 0;
-  background: #fff;
-}
 
-.team-totals {
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-
-.team-badge {
-  font-size: 12px;
-  color: #374151;
-  padding-bottom: 2px;
-  border-bottom: 2px solid currentColor;
-  strong { margin-left: 3px; }
-
-  &.badge-dev    { color: #3B82F6; }
-  &.badge-bi     { color: #8B5CF6; }
-  &.badge-design { color: #F59E0B; }
-  &.badge-data   { color: #10B981; }
-}
-
-.search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.search-input {
-  border: 1px solid $border;
-  border-radius: 6px;
-  padding: 5px 28px 5px 10px;
-  font-size: 12px;
-  outline: none;
-  width: 180px;
-  color: #374151;
-  &:focus { border-color: #93C5FD; }
-  &::placeholder { color: #9CA3AF; }
-}
-
-.search-icon {
-  position: absolute;
-  right: 8px;
-  pointer-events: none;
-  opacity: 0.6;
+  &--error { color: #B91C1C; background: #FEF2F2; }
 }
 
 /* ─── Scroll area ─────────────────────────────── */
 .gantt-scroll {
   overflow: auto;
-  flex: 1;
-  position: relative;
+  width: 100%;
   max-height: 600px;
+  position: relative;
 }
 
 .gantt-inner {
   position: relative;
-  display: inline-block;
   min-width: 100%;
-  vertical-align: top;
 }
 
 /* ─── Row base ────────────────────────────────── */
@@ -635,7 +592,6 @@ $sticky-bg: #fff;
   color: #fff;
   flex-shrink: 0;
   background: #9CA3AF;
-
   &.av-dev    { background: #3B82F6; }
   &.av-bi     { background: #8B5CF6; }
   &.av-design { background: #F59E0B; }
@@ -648,7 +604,6 @@ $sticky-bg: #fff;
   min-height: $row-h;
   position: relative;
   box-sizing: border-box;
-
   &.tl-cell--sub { min-height: 40px; }
 }
 
