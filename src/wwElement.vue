@@ -12,17 +12,16 @@
         <div class="gantt-header-block">
           <!-- Quarter row -->
           <div class="gantt-row">
-            <div class="left-cell sticky-cell hdr-bg nav-cell">
-              <button class="nav-btn" @click="offsetMonths -= 3">&#8249;</button>
-              <button class="nav-btn" @click="offsetMonths += 3">&#8250;</button>
-            </div>
-            <div class="tl-header">
+            <div class="left-cell sticky-cell hdr-bg"></div>
+            <div class="tl-header quarter-header">
+              <button class="nav-arrow nav-arrow--left" @click="offsetMonths -= 3">&#8249;</button>
               <div
                 v-for="q in quarters"
                 :key="q.key"
                 class="quarter-cell"
                 :style="{ width: (q.span * monthWidth) + 'px' }"
               >{{ q.label }}</div>
+              <button class="nav-arrow nav-arrow--right" @click="offsetMonths += 3">&#8250;</button>
             </div>
           </div>
 
@@ -262,7 +261,7 @@ export default {
       return {
         width: this.timelineWidth + 'px',
         backgroundImage:
-          `repeating-linear-gradient(to right, transparent, transparent ${mw - 1}px, #E5E7EB ${mw - 1}px, #E5E7EB ${mw}px)`,
+          `repeating-linear-gradient(to right, transparent, transparent ${mw - 1}px, #EEF0F2 ${mw - 1}px, #EEF0F2 ${mw}px)`,
       };
     },
 
@@ -384,9 +383,11 @@ export default {
 
 <style lang="scss" scoped>
 $left-w:    200px;
-$row-h:     48px;
-$hdr-h:     30px;
+$row-h:     64px;
+$sub-h:     52px;
+$hdr-h:     36px;
 $border:    #E5E7EB;
+$grid:      #EEF0F2;
 $sticky-bg: #fff;
 
 .gantt-wrapper {
@@ -431,7 +432,7 @@ $sticky-bg: #fff;
 .gantt-row {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid $border;
+  border-bottom: 1px solid $grid;
   &:last-child { border-bottom: none; }
 }
 
@@ -440,7 +441,8 @@ $sticky-bg: #fff;
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #F9FAFB;
+  background: #fff;
+  border-bottom: 1px solid $border;
 }
 
 /* ─── Left sticky cell ────────────────────────── */
@@ -450,8 +452,8 @@ $sticky-bg: #fff;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  border-right: 2px solid $border;
+  padding: 0 14px;
+  border-right: 1px solid $grid;
   box-sizing: border-box;
   background: $sticky-bg;
 }
@@ -463,13 +465,8 @@ $sticky-bg: #fff;
 }
 
 .hdr-bg {
-  background: #F9FAFB;
+  background: #fff;
   z-index: 11;
-}
-
-.nav-cell {
-  gap: 6px;
-  justify-content: flex-end;
 }
 
 /* ─── Timeline header cells ───────────────────── */
@@ -478,16 +475,20 @@ $sticky-bg: #fff;
   flex-shrink: 0;
 }
 
+.quarter-header {
+  position: relative;
+}
+
 .quarter-cell {
   flex-shrink: 0;
   height: $hdr-h;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  color: #6B7280;
-  border-right: 1px solid $border;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4B5563;
+  border-right: 1px solid $grid;
   &:last-child { border-right: none; }
 }
 
@@ -497,30 +498,31 @@ $sticky-bg: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  color: #9CA3AF;
-  border-right: 1px solid $border;
+  font-size: 13px;
+  font-weight: 400;
+  color: #6B7280;
+  border-right: 1px solid $grid;
   &:last-child { border-right: none; }
-  &.is-current { color: #2563EB; font-weight: 700; }
+  &.is-current { color: #0EA5A5; font-weight: 600; }
 }
 
-/* ─── Nav buttons ─────────────────────────────── */
-.nav-btn {
+/* ─── Inline nav arrows ───────────────────────── */
+.nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
-  border: 1px solid $border;
-  border-radius: 4px;
+  border: none;
   cursor: pointer;
-  font-size: 16px;
-  color: #6B7280;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+  font-size: 18px;
   line-height: 1;
-  flex-shrink: 0;
-  &:hover { background: #F3F4F6; color: #111827; }
+  color: #9CA3AF;
+  padding: 2px 6px;
+  z-index: 2;
+  &:hover { color: #111827; }
+
+  &--left  { left: 2px; }
+  &--right { right: 2px; }
 }
 
 /* ─── Project rows ────────────────────────────── */
@@ -529,6 +531,8 @@ $sticky-bg: #fff;
   cursor: pointer;
   &:hover .name-cell { background: #F9FAFB; }
 }
+
+.project-row .left-cell { background: $sticky-bg; }
 
 .name-cell {
   gap: 6px;
@@ -554,7 +558,7 @@ $sticky-bg: #fff;
 
 /* ─── Sub-rows ────────────────────────────────── */
 .sub-row {
-  min-height: 40px;
+  min-height: $sub-h;
   background: #FAFAFA;
   .sticky-cell { background: #FAFAFA; }
 }
@@ -604,7 +608,7 @@ $sticky-bg: #fff;
   min-height: $row-h;
   position: relative;
   box-sizing: border-box;
-  &.tl-cell--sub { min-height: 40px; }
+  &.tl-cell--sub { min-height: $sub-h; }
 }
 
 /* ─── Today line ──────────────────────────────── */
@@ -621,27 +625,27 @@ $sticky-bg: #fff;
 /* ─── Gantt bars ──────────────────────────────── */
 .bar {
   position: absolute;
-  top: 8px;
-  height: 32px;
-  border-radius: 6px;
+  top: 17px;
+  height: 30px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 12px;
   z-index: 1;
   overflow: hidden;
   cursor: default;
   transition: filter 0.1s;
-  &:hover { filter: brightness(1.08); }
+  &:hover { filter: brightness(1.06); }
 
-  &.bar--orange { background: #F07050; }
-  &.bar--green  { background: #4CAF50; }
-  &.bar--blue   { background: #3B82F6; }
-  &.bar--gray   { background: #9CA3AF; }
+  &.bar--orange { background: #E8593F; }
+  &.bar--green  { background: #5BB85C; }
+  &.bar--blue   { background: #2BA6DE; }
+  &.bar--gray   { background: #9AA5B1; }
 
   &.bar--sub {
-    top: 6px;
-    height: 22px;
-    opacity: 0.5;
+    top: 14px;
+    height: 24px;
+    opacity: 0.55;
     border-radius: 4px;
   }
 }
